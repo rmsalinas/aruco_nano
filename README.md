@@ -18,10 +18,10 @@ Key advantages over the standard OpenCV implementation:
 
 ## Installation
 
-Integration is trivial. Simply copy the aruco_nano.h file into your project directory.
+Integration is trivial. Simply copy the `aruco_nano.h` file into your project directory.
 
 ### Dependencies
-* OpenCV (Core, ImgProc, Calib3d, HighGUI)
+* OpenCV 4.9+
 * C++17 standard
 
 ## Usage
@@ -137,8 +137,8 @@ If you use ArUco Nano in your research, please cite the following paper:
 
 Additionally, please cite the foundational ArUco papers:
 
-1.  S. Garrido-Jurado et al., "Automatic generation and detection of highly reliable fiducial markers under occlusion", Pattern Recognition, 2014.
-2.  F.J. Romero-Ramirez et al., "Speeded up detection of squared fiducial markers", Image and Vision Computing, 2018.
+1.  S. Garrido-Jurado et al., "Automatic generation and detection of highly reliable fiducial markers under occlusion", Pattern Recognition, 2014. [Official Link](https://www.sciencedirect.com/science/article/abs/pii/S0031320314000235)
+2.  F.J. Romero-Ramirez et al., "Speeded up detection of squared fiducial markers", Image and Vision Computing, 2018.[Official Link](https://www.sciencedirect.com/science/article/abs/pii/S0262885618300799). [OpenLink](https://www.researchgate.net/publication/325787310_Speeded_Up_Detection_of_Squared_Fiducial_Markers)
 
 ## 🔖 License
 
