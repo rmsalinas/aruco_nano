@@ -2,8 +2,6 @@
  * @file aruco_nano.h
  * @brief ArucoNano: A lightweight, header-only ArUco marker detection library.
  * @version 8.0
- * @author Rafael Munoz-Salinas
- * @copyright 2026 Rafael Munoz-Salinas
  *
  * DESCRIPTION:
  * ArucoNano compresses robust ArUco marker detection into a single header file
