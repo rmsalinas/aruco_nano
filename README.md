@@ -127,6 +127,7 @@ echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo
 sudo cpupower frequency-set -u 4000MHz
 ./testperf <path_to_image_directory> [-show] [-scale 0.5]
 ```
+[Download the Image Dataset on Zenodo](https://zenodo.org/records/18667018?token=...)
 
 ## 📚 Citation
 
