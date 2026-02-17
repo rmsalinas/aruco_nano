@@ -141,7 +141,7 @@ Additionally, please cite the foundational ArUco papers:
 
 ## 🔖 License
 
-This project is licensed under the Apache License 2.0. You can freely use the code in your commercial products.
+This project is licensed under the MIT License.
 
 ## Acknowledgments
 
