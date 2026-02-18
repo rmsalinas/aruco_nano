@@ -1,9 +1,16 @@
 # 📚 ArUco Nano
 
-A minimalist, header-only, high-performance C++ library for ArUco marker detection.
+A minimalist, header-only, high-performance C++ library for ArUco marker detection. [Download Preprint](https://drive.google.com/file/d/1mEhKxhlkQybo9EMzorhQEMu1apvoxgUR/view?usp=drive_link)
 
-  
+If you use ArUco Nano in your research, please cite the following paper:
 
+> R. Muñoz-Salinas, F. J. Romero-Ramirez, S. Garrido-Jurado, "ArUco Nano: a simpler, faster, and more reliable fiducial marker detector", TO BE PUBLISHED, 2026.
+
+Additionally, please cite the foundational ArUco papers:
+
+1.  S. Garrido-Jurado et al., "Automatic generation and detection of highly reliable fiducial markers under occlusion", Pattern Recognition, 2014. [Official Link](https://www.sciencedirect.com/science/article/abs/pii/S0031320314000235)
+2.  F.J. Romero-Ramirez et al., "Speeded up detection of squared fiducial markers", Image and Vision Computing, 2018.[Official Link](https://www.sciencedirect.com/science/article/abs/pii/S0262885618300799). [OpenLink](https://www.researchgate.net/publication/325787310_Speeded_Up_Detection_of_Squared_Fiducial_Markers)
+   
 ## 🏛 Introduction
 
 ArUco Nano is a lightweight (single header, <500 lines) implementation of the ArUco marker detection algorithm. Designed for speed and ease of integration, it replaces general-purpose OpenCV algorithms with a specialized Visited-Aware Contour Tracing algorithm and direct sub-pixel code sampling.
@@ -129,16 +136,6 @@ sudo cpupower frequency-set -u 4000MHz
 ```
 [Download the Image Dataset on Zenodo](https://zenodo.org/records/18667018?token=...)
 
-## 📚 Citation
-
-If you use ArUco Nano in your research, please cite the following paper:
-
-> R. Muñoz-Salinas, F. J. Romero-Ramirez, S. Garrido-Jurado, "ArUco Nano: a simpler, faster, and more reliable fiducial marker detector", TO BE PUBLISHED, 2026.
-
-Additionally, please cite the foundational ArUco papers:
-
-1.  S. Garrido-Jurado et al., "Automatic generation and detection of highly reliable fiducial markers under occlusion", Pattern Recognition, 2014. [Official Link](https://www.sciencedirect.com/science/article/abs/pii/S0031320314000235)
-2.  F.J. Romero-Ramirez et al., "Speeded up detection of squared fiducial markers", Image and Vision Computing, 2018.[Official Link](https://www.sciencedirect.com/science/article/abs/pii/S0262885618300799). [OpenLink](https://www.researchgate.net/publication/325787310_Speeded_Up_Detection_of_Squared_Fiducial_Markers)
 
 ## 🔖 License
 
