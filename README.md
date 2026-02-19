@@ -9,7 +9,7 @@ ArUco Nano is a lightweight (single header, <500 lines) implementation of the Ar
 Key advantages over the standard OpenCV implementation:
 
 
-* 🚀 High Performance: Up to  6.5x faster than standard OpenCV ArUco (single-threaded) and 2x faster than the multi-threaded implementation.
+* 🚀 High Performance: Up to  <b>6.5x faster</b> than standard OpenCV ArUco (single-threaded) and 2x faster than the multi-threaded implementation.
 * 🪶 Header-Only: No complex build systems or linking required. Just #include "aruco_nano.h".
 * 🔌Drop-in Replacement: Includes an ArucoDetector wrapper that mimics the standard OpenCV API for easy migration.
 * 🔬Robust: Higher F1 score on challenging datasets.
