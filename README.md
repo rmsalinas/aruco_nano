@@ -1,6 +1,6 @@
 # 📚 ArUco Nano
 
-A minimalist, header-only, high-performance C++ library for ArUco marker detection. [Download Preprint]([https://drive.google.com/file/d/1mEhKxhlkQybo9EMzorhQEMu1apvoxgUR/view?usp=drive_link](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6299207))
+A minimalist, header-only, high-performance C++ library for ArUco marker detection. [Download Preprint](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6299207)
    
 ## 🏛 Introduction
 
