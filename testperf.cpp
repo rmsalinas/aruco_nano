@@ -165,7 +165,6 @@ int main(int argc, char** argv) {
         std::ifstream inCSV(filename);
         std::string line;
         //skip header
-        std::getline(inCSV,line);
         while(std::getline(inCSV,line)){
             std::string imageName=line.substr(0,line.find(","));
             processedImages.push_back(imageName);
