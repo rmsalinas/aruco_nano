@@ -191,6 +191,7 @@ public:
 private:
     static inline Marker sort( const  Marker &marker);
     static inline float  getSubpixelValue(const cv::Mat &im_grey,const cv::Point2f &p);
+    static inline void refineCornersEdges(const cv::Mat &im_grey, std::vector<Marker> &markers, const DetectorParameters &params);
     static inline int   getMarkerId(  cv::Mat  candidateBits,int &idx, int &nrotations, const DetectorParameters &params,int dictIndex);
     static inline int isInto(const std::vector<cv::Point2f> &a, const std::vector<cv::Point2f> &b) ;
     static std::vector<std::vector<cv::Point>> visitedAwareTracingContour(cv::Mat &padded, size_t minSize = 1,float maxRevisited=0.1) ;
@@ -437,16 +438,7 @@ std::vector<Marker>  MarkerDetector::detect(const cv::Mat &img, const DetectorPa
 
 
     ////// finally subpixel corner refinement
-    if(DetectedMarkers.size()>0){
-        int halfwsize= 4*float(bwimage.cols)/float(bwimage.cols) +0.5 ;
-        std::vector<cv::Point2f> Corners;
-        for (const auto &m:DetectedMarkers)
-            Corners.insert(Corners.end(), m.begin(),m.end());
-        cv::cornerSubPix(bwimage, Corners, cv::Size(halfwsize,halfwsize), cv::Size(-1, -1),cv::TermCriteria( cv::TermCriteria::MAX_ITER | cv::TermCriteria::EPS, 12, 0.005));
-        // copy back to the markers
-        for (unsigned int i = 0; i < DetectedMarkers.size(); i++)
-            for (int c = 0; c < 4; c++) DetectedMarkers[i][c] = Corners[i * 4 + c];
-    }
+    refineCornersEdges(bwimage,DetectedMarkers,params);
     return DetectedMarkers;//DONE
 }
 /**
@@ -521,6 +513,116 @@ float MarkerDetector::getSubpixelValue(const cv::Mat &im_grey, const cv::Point2f
     const float bot = p10 + dx * (p11 - p10);    // Interpolate Bottom Row Horizontallys
     // Interpolate Vertically between Top and Bottom results
     return top + dy * (bot - top);
+}
+/**
+ * @brief Refines the corners by fitting a line to each marker side and intersecting adjacent lines.
+ *
+ * For each side, points spread along the whole side (avoiding the corners, which are the least
+ * reliable region) are moved along the side normal to the gradient-weighted edge position. A line
+ * is fitted to them and the corners are recomputed as the intersections of adjacent lines.
+ * Two passes are done: a coarse one starting from the polygon corners and a fine one sampling a
+ * narrower band around the lines of the first pass. Markers are processed in parallel.
+ */
+void MarkerDetector::refineCornersEdges(const cv::Mat &im_grey, std::vector<Marker> &markers, const DetectorParameters &params){
+    if (markers.empty()) return;
+    auto refineRange = [&](const cv::Range &r) {
+        const int nIterations = 2;
+        const float stepLength = 0.5f;                     // sampling step along the normal (pixels)
+        const int gradOffset = 4;                          // gradient computed between samples 2 px apart
+        const float grange = 0.5f * gradOffset * stepLength;
+        const float fineRange = 1.5f;                      // search range of the second pass (lines are already close)
+        float profile[32];
+
+        for (int mi = r.start; mi < r.end; mi++) {
+            Marker &m = markers[mi];
+            // search range along the normal: limited to half a bit cell so inner bits do not interfere
+            const int nCells = params.dicts[m.dict].markerSize + 2 * int(params.markerBorderBits);
+            double side = 0;
+            for (int i = 0; i < 4; i++) side += cv::norm(m[i] - m[(i + 1) % 4]);
+            side /= 4;
+            const float range = std::max(1.5f, std::min(3.f, float(side / nCells) * 0.5f));
+
+            cv::Point2f corners[4] = {m[0], m[1], m[2], m[3]};
+            bool valid = true;
+            for (int it = 0; it < nIterations && valid; it++) {
+                // first pass: coarse (half the samples) from the polygon corners; second pass: all the
+                // samples in a narrower band around the lines found in the first pass
+                const bool coarse = it == 0;
+                const float itRange = coarse ? range : std::min(range, fineRange);
+                const int nSteps = int(2 * itRange / stepLength); // edge positions -itRange .. itRange
+                const int nProfile = nSteps + gradOffset + 1;     // <= 17 samples
+                cv::Vec4d lines[4]; // point (x,y) and unit normal (nx,ny) of the line of side i -> i+1
+                for (int edge = 0; edge < 4 && valid; edge++) {
+                    const cv::Point2f a = corners[edge], b = corners[(edge + 1) % 4];
+                    const cv::Point2f d = b - a;
+                    const float len = float(cv::norm(d));
+                    if (len < 1) { valid = false; break; }
+                    const cv::Point2f n(d.y / len, -d.x / len);
+
+                    // gradient-weighted edge positions; dark->bright and bright->dark transitions are
+                    // accumulated separately and the dominant one is used (supports both marker colors).
+                    // Weighted line fit statistics relative to 'a' to keep the numbers small.
+                    double W[2] = {0, 0}, Sx[2] = {0, 0}, Sy[2] = {0, 0}, Sxx[2] = {0, 0}, Sxy[2] = {0, 0}, Syy[2] = {0, 0};
+                    int N[2] = {0, 0};
+                    const int nsamples = coarse ? std::max(8, int(len / 16)) : std::max(16, int(len / 8));
+                    for (int s = 0; s < nsamples; s++) {
+                        const float alpha = float(1 + s) / float(nsamples + 1);
+                        const cv::Point2f p0 = d * alpha;  // relative to a
+                        const cv::Point2f start = a + p0 + n * (-itRange - grange);
+                        const cv::Point2f step = n * stepLength;
+                        for (int j = 0; j < nProfile; j++) profile[j] = getSubpixelValue(im_grey, start + step * float(j));
+                        float Mn[2] = {0, 0}, Mw[2] = {0, 0};
+                        for (int k = 0; k <= nSteps; k++) {
+                            const float g = profile[k + gradOffset] - profile[k];
+                            const int pol = g > 0 ? 0 : 1;
+                            const float w = g * g;
+                            Mn[pol] += w * (-itRange + k * stepLength);
+                            Mw[pol] += w;
+                        }
+                        for (int pol = 0; pol < 2; pol++) {
+                            if (Mw[pol] <= 0) continue;
+                            const double x = p0.x + n.x * Mn[pol] / Mw[pol], y = p0.y + n.y * Mn[pol] / Mw[pol], w = Mw[pol];
+                            W[pol] += w; Sx[pol] += w * x; Sy[pol] += w * y;
+                            Sxx[pol] += w * x * x; Sxy[pol] += w * x * y; Syy[pol] += w * y * y;
+                            N[pol]++;
+                        }
+                    }
+                    const int pol = W[0] >= W[1] ? 0 : 1;
+                    if (N[pol] < 3) { valid = false; break; }
+
+                    // weighted total least squares line fit
+                    const double Ex = Sx[pol] / W[pol], Ey = Sy[pol] / W[pol];
+                    const double Cxx = Sxx[pol] / W[pol] - Ex * Ex, Cxy = Sxy[pol] / W[pol] - Ex * Ey, Cyy = Syy[pol] / W[pol] - Ey * Ey;
+                    const double normalTheta = 0.5 * std::atan2(-2 * Cxy, Cyy - Cxx);
+                    lines[edge] = cv::Vec4d(a.x + Ex, a.y + Ey, std::cos(normalTheta), std::sin(normalTheta));
+                }
+                if (!valid) break;
+
+                // corner i+1 is the intersection of line i and line i+1
+                cv::Point2f newCorners[4];
+                for (int i = 0; i < 4 && valid; i++) {
+                    const cv::Vec4d &l1 = lines[i], &l2 = lines[(i + 1) % 4];
+                    // n1 . x = n1 . p1  ;  n2 . x = n2 . p2
+                    const double c1 = l1[2] * l1[0] + l1[3] * l1[1];
+                    const double c2 = l2[2] * l2[0] + l2[3] * l2[1];
+                    const double det = l1[2] * l2[3] - l1[3] * l2[2];
+                    if (std::fabs(det) < 1e-3) { valid = false; break; }
+                    newCorners[(i + 1) % 4] = cv::Point2f(float((c1 * l2[3] - c2 * l1[3]) / det),
+                                                          float((l1[2] * c2 - l2[2] * c1) / det));
+                }
+                // reject the refinement if any corner moves too far from its initial estimate
+                for (int i = 0; i < 4 && valid; i++)
+                    if (cv::norm(newCorners[i] - m[i]) > 2 * range) valid = false;
+                if (valid) std::copy(newCorners, newCorners + 4, corners);
+            }
+            if (valid) std::copy(corners, corners + 4, m.begin());
+        }
+    };
+    // markers are independent; only parallelize when there are enough to pay the overhead
+    if (markers.size() >= 16)
+        cv::parallel_for_(cv::Range(0, int(markers.size())), refineRange, double(markers.size()) / 8);
+    else
+        refineRange(cv::Range(0, int(markers.size())));
 }
 Marker  MarkerDetector::sort( const  Marker &marker){
     Marker res_marker=marker;

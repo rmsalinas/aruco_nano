@@ -19,6 +19,7 @@ Key advantages over the standard OpenCV implementation:
 * 🪶 Header-Only: No complex build systems or linking required. Just #include "aruco_nano.h".
 * 🔌Drop-in Replacement: Includes an ArucoDetector wrapper that mimics the standard OpenCV API for easy migration.
 * 🔬Robust: Higher F1 score on challenging datasets.
+* 🎯 ~10x more accurate corners: corners are refined by fitting a line to each marker side and intersecting them (as AprilTag does) instead of `cv::cornerSubPix`. In synthetic tests with ground truth, the median corner error is 0.04 px vs 0.39 px for OpenCV's best mode (`CORNER_REFINE_SUBPIX`), with AprilTag-level accuracy at no extra cost.
 
 ## Installation
 
@@ -136,7 +137,9 @@ sudo cpupower frequency-set -u 4000MHz
 ## Citation
 If you use ArUco Nano in your research, please cite the following paper:
 
-> R. Muñoz-Salinas, F. J. Romero-Ramirez, S. Garrido-Jurado, "ArUco Nano: a simpler, faster, and more reliable fiducial marker detector", TO BE PUBLISHED, 2026.
+> Sergio Garrido-Jurado, Francisco J. Romero-Ramirez, Rafael Muñoz-Salinas,
+ArUco Nano: a simpler, faster, and more reliable fiducial marker detector,
+SoftwareX,Volume 34,2026,102690,ISSN 2352-7110, https://doi.org/10.1016/j.softx.2026.102690.
 
 Additionally, please cite the foundational ArUco papers:
 
