@@ -192,6 +192,8 @@ private:
     static inline Marker sort( const  Marker &marker);
     static inline float  getSubpixelValue(const cv::Mat &im_grey,const cv::Point2f &p);
     static inline void refineCornersEdges(const cv::Mat &im_grey, std::vector<Marker> &markers, const DetectorParameters &params);
+    static inline bool fitLine2D(const cv::Point *pts,int n,int start,int end,int inc,cv::Point3d &line);
+    static inline void refineCornersWithContourLines(const std::vector<cv::Point> &contour, Marker &marker,cv::Size imSize);
     static inline int   getMarkerId(  cv::Mat  candidateBits,int &idx, int &nrotations, const DetectorParameters &params,int dictIndex);
     static inline int isInto(const std::vector<cv::Point2f> &a, const std::vector<cv::Point2f> &b) ;
     static std::vector<std::vector<cv::Point>> visitedAwareTracingContour(cv::Mat &padded, size_t minSize = 1,float maxRevisited=0.1) ;
@@ -343,6 +345,7 @@ std::vector<Marker>  MarkerDetector::detect(const cv::Mat &img, const DetectorPa
 
     //decide where to store the candidates. If candidatesOut is not null, store there, otherwise use a local variable
     std::vector<Marker> candidateslocal;
+    std::vector<Marker> unrefinedCandidates;//the corners before refineCornersWithContourLines (the attempts alternate both)
     if(candidatesOut!=nullptr) {
         candidatesOut->clear();
     }
@@ -366,6 +369,9 @@ std::vector<Marker>  MarkerDetector::detect(const cv::Mat &img, const DetectorPa
             marker.emplace_back( cv::Point2f( approxCurve[j].x,approxCurve[j].y));
         //sort corner in clockwise direction
         marker=sort(marker);
+        unrefinedCandidates.push_back(marker);
+        //move the corners to the intersection of lines fitted to the contour sides before reading the code
+        refineCornersWithContourLines(contours[i],marker,bwimage.size());
         candidatesOut->push_back(marker);
     }
 
@@ -377,13 +383,15 @@ std::vector<Marker>  MarkerDetector::detect(const cv::Mat &img, const DetectorPa
         dictIndex++;
         cv::Mat bits(dict.markerSize+2,dict.markerSize+2,CV_8UC1),bitadaptive(dict.markerSize+2,dict.markerSize+2,CV_8UC1);
 
+        auto itUnref=unrefinedCandidates.begin();
         for(auto it=candidatesOut->begin();it!=candidatesOut->end();){
             auto marker=*it;
 
             ////// extract the code. Obtain the intensities of the bits using  homography
             for(int i=0;i<int(params.maxAttemptsPerCandidate) && marker.id==-1;i++){
                 //if not first attempt, we may wanna produce small random alteration of the corners
-                auto marker2=marker;
+                //odd attempts start from the unrefined corners
+                auto marker2=(i%2==0)?marker:*itUnref;
                 if( i!=0) for(int c=0;c<4;c++) {marker2[c].x+=rand.gaussian(0.75);marker2[c].y+=rand.gaussian(0.75);}//if not first, alter corner location
                 _private::Homographer hom(marker2);
                 for(int r=0;r<bits.rows;r++){
@@ -413,8 +421,9 @@ std::vector<Marker>  MarkerDetector::detect(const cv::Mat &img, const DetectorPa
                 currDirMarkerDetected.push_back(marker);
                 //remove from candidate list
                 it=candidatesOut->erase(it);
+                itUnref=unrefinedCandidates.erase(itUnref);
             }
-            else it++;//go to next
+            else {it++;itUnref++;}//go to next
         }
 
         /// REMOVAL OF INNER DUPLICATED DETECTIONS OF THE SAME MARKER(INNER AND OUTER BORDER)
@@ -640,6 +649,72 @@ Marker  MarkerDetector::sort( const  Marker &marker){
     // if the third point is in the left side, then sort in anti-clockwise order
     if (o < 0.0)  std::swap(res_marker[1], res_marker[3]);
     return res_marker;
+}
+//least squares line through the contour points start..end (circular, step inc), returned as (a,b,c) with a*x+b*y+c=0.
+//Fits y=a*x+c if the points spread more in x, x=a*y+c otherwise. Returns false if degenerated
+bool MarkerDetector::fitLine2D(const cv::Point *pts,int n,int start,int end,int inc,cv::Point3d &line){
+    if(start==end) return false;
+    //the points visited, as (at most) two contiguous ranges [r0,r1] and [r2,r3] (when going backwards, point 0 is skipped)
+    int r0,r1,r2=0,r3=-1;
+    if(inc>0){
+        if(end>start){r0=start;r1=end-1;}
+        else {r0=start;r1=n-1;r2=0;r3=std::max(end-1,0);}
+    }
+    else{
+        if(start>end){r0=end+1;r1=start;}
+        else {r0=1;r1=start;r2=std::min(end+1,n-1);r3=n-1;}
+    }
+    //single pass: bounding box and the sums for both possible orientations. Integer sums are exact
+    int minX=pts[start].x,maxX=minX,minY=pts[start].y,maxY=minY;
+    int64_t s_x=0,s_y=0,s_xx=0,s_yy=0,s_xy=0;
+    auto accum=[&](int a,int b){
+        for(int j=a;j<=b;j++){
+            const int x=pts[j].x,y=pts[j].y;
+            minX=std::min(minX,x);maxX=std::max(maxX,x);minY=std::min(minY,y);maxY=std::max(maxY,y);
+            s_x+=x;s_y+=y;s_xx+=int64_t(x)*x;s_yy+=int64_t(y)*y;s_xy+=int64_t(x)*y;
+        }
+    };
+    accum(r0,r1);
+    accum(r2,r3);
+    const int cnt=std::max(0,r1-r0+1)+std::max(0,r3-r2+1);
+    const bool xmajor=(maxX-minX)>(maxY-minY);
+    const double s_u=double(xmajor?s_x:s_y),s_v=double(xmajor?s_y:s_x),s_uu=double(xmajor?s_xx:s_yy),s_uv=double(s_xy);
+    double det=cnt*s_uu-s_u*s_u;
+    if(cnt<2 || std::fabs(det)<1e-9) return false;
+    double a=(cnt*s_uv-s_u*s_v)/det, c=(s_v-a*s_u)/cnt;
+    if(xmajor) line=cv::Point3d(a,-1,c);//a*x-y+c=0
+    else line=cv::Point3d(-1,a,c);//-x+a*y+c=0
+    return true;
+}
+//moves the corners of the candidate to the intersection of the lines fitted to the contour points between them.
+//The corners are not changed if any of the new ones is out of the image
+void MarkerDetector::refineCornersWithContourLines(const std::vector<cv::Point> &contour, Marker &marker,cv::Size imSize){
+    const int n=int(contour.size());
+    //the corners come from approxPolyDP, so they are contour points: find the first occurrence of each one
+    int cornerIndex[4]={-1,-1,-1,-1};
+    const cv::Point corner[4]={cv::Point(int(marker[0].x),int(marker[0].y)),cv::Point(int(marker[1].x),int(marker[1].y)),
+                                 cv::Point(int(marker[2].x),int(marker[2].y)),cv::Point(int(marker[3].x),int(marker[3].y))};
+    for(int j=0,found=0;j<n && found<4;j++)
+        for(int k=0;k<4;k++)
+            if(cornerIndex[k]==-1 && contour[j]==corner[k]){cornerIndex[k]=j;found++;}
+    for(int k=0;k<4;k++) if(cornerIndex[k]==-1) return;
+    //contour pixels in inverse order or not?
+    bool inverse;
+    if ((cornerIndex[1] > cornerIndex[0]) && (cornerIndex[2] > cornerIndex[1] || cornerIndex[2] < cornerIndex[0])) inverse = false;
+    else if (cornerIndex[2] > cornerIndex[1] && cornerIndex[2] < cornerIndex[0]) inverse = false;
+    else inverse = true;
+    cv::Point3d lines[4];
+    for(int l=0;l<4;l++)
+        if(!fitLine2D(contour.data(),n,cornerIndex[l],cornerIndex[(l+1)%4],inverse?-1:1,lines[l])) return;
+    cv::Point2f cross[4];
+    for(int i=0;i<4;i++){
+        const cv::Point3d &l1=lines[(i+3)%4],&l2=lines[i];
+        double det=l1.x*l2.y-l1.y*l2.x;
+        if(std::fabs(det)<1e-12) return;
+        cross[i]=cv::Point2f(float((-l1.z*l2.y+l2.z*l1.y)/det),float((-l1.x*l2.z+l2.x*l1.z)/det));
+        if(!(cross[i].x>=0 && cross[i].y>=0 && cross[i].x<=imSize.width-1 && cross[i].y<=imSize.height-1)) return;
+    }
+    for(int i=0;i<4;i++) marker[i]=cross[i];
 }
 std::pair<cv::Mat,cv::Mat> Marker::estimatePose(cv::Mat cameraMatrix,cv::Mat distCoeffs,double markerSize) const{
     std::vector<cv::Point3d> markerCorners={ {-markerSize/2.f,markerSize/2.f,0.f},{markerSize/2.f,markerSize/2.f,0.f},{markerSize/2.f,-markerSize/2.f,0.f},{-markerSize/2.f,-markerSize/2.f,0.f}};

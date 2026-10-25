@@ -43,6 +43,7 @@ float scale=1.0;
 bool showData=false;
 bool singleImage=false;
 bool fresh=false;
+bool nanoOnly=false;
 
 
 struct MethodResult{
@@ -117,7 +118,7 @@ int main(int argc, char** argv) {
     // cv::setNumThreads(1);
     // 1. Define the path to your image
     if(argc<2){
-        std::cout<<"Usage: "<<argv[0]<<" <path_to_flyinaruco_dir> [-show] [-fresh] [-scale val]"<<std::endl;
+        std::cout<<"Usage: "<<argv[0]<<" <path_to_flyinaruco_dir> [-show] [-fresh] [-scale val] [-nanoonly] [-outer n] [-inner n]"<<std::endl;
         return -1;
     }
     //read optional args
@@ -126,6 +127,15 @@ int main(int argc, char** argv) {
         if(arg=="-show"){
             showData=true;
             std::cout<<"Showing data mode enabled."<<std::endl;
+        }
+        if(arg=="-outer" && i+1<argc){
+            testNTimesOuter=std::stoi(argv[++i]);
+        }
+        if(arg=="-inner" && i+1<argc){
+            testNTimesInner=std::stoi(argv[++i]);
+        }
+        if(arg=="-nanoonly"){
+            nanoOnly=true;
         }
         if(arg=="-fresh"){
             fresh=true;
@@ -138,7 +148,7 @@ int main(int argc, char** argv) {
     }
 
 
-    std::string filename="nanoperf_"+std::to_string(scale)+".csv";
+    std::string filename=std::string(nanoOnly?"nanoonlyperf_":"nanoperf_")+std::to_string(scale)+".csv";
     std::ofstream outCSV;
     bool hasHeader=false;
 
@@ -212,6 +222,7 @@ int main(int argc, char** argv) {
         // --- 1. Load Ground Truth ---
         std::string jsonPath = image.string().substr(0, image.string().size() - 4) + ".json";
         std::vector<MarkerInfo> groundTruth = readFromJsonFile(jsonPath); //
+        for(auto &m:groundTruth) for(auto &p:m.corners) p*=scale;//the image is resized below
 
         ImageResult ThisImgResult;
         ThisImgResult.file=image.string();
@@ -229,7 +240,7 @@ int main(int argc, char** argv) {
 
             //Opencv 1 Thread
             method_name="01:cv::aruco(1)";
-            {
+            if(!nanoOnly){
                 cv::setNumThreads(1);
                 cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_ARUCO_MIP_36h12);
                 cv::aruco::DetectorParameters detectorParams = cv::aruco::DetectorParameters();
@@ -259,7 +270,7 @@ int main(int argc, char** argv) {
 
             //Opencv N Threads
             method_name="02:cv::aruco("+std::to_string(nthreads)+")"    ;
-            {
+            if(!nanoOnly){
                 cv::setNumThreads(nthreads);
                 cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_ARUCO_MIP_36h12);
                 cv::aruco::DetectorParameters detectorParams = cv::aruco::DetectorParameters();
@@ -286,12 +297,13 @@ int main(int argc, char** argv) {
             }
 
 
-                //Opencv N Threads
-            method_name="03:cv::aruco_nano"   ;
+            method_name="03:cv::aruco_nano";
             {
                 cv::setNumThreads(1);
                 cv::aruco::Dictionary dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_ARUCO_MIP_36h12);
-                aruco_nano::ArucoDetector detector(dictionary);
+                aruco_nano::DetectorParameters params;
+                params.dicts.clear();//the constructor adds the dictionary to the list
+                aruco_nano::ArucoDetector detector(dictionary,params);
                 std::vector<int> markerIds;
                 std::vector<std::vector<cv::Point2f>> markerCorners;
                 int64 besttime=std::numeric_limits<int64>::max();
